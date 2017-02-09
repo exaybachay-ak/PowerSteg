@@ -3,7 +3,7 @@
 #############################################################################################################
 #############################################################################################################
 
-	   Current steg file layout below:
+       Current steg file layout below:
        <--BMPHEADER--><--STEGHEADER--><--STEGDATA--><--BMPDATA-->
                       |               \
                       |                 \
@@ -27,18 +27,19 @@
                       |                                                     \
                       |                                                       \
                       |                                                         \
-                      |--4 bytes, steg data size (bytes)--|--4 bytes, extension--|
+		      |                                                           \
+                      |--4 bytes, steg data size (in bytes)--|--4 bytes, extension--|
 
-		Example header info:::
+	Example header info:::
 
-		Stegdata length (22)  // 32 bits, 4 bytes
-		00000000000000000000000000010110
+	Stegdata length (22)  // 32 bits, 4 bytes
+	00000000000000000000000000010110
 		
-		Stegdata extension (.txt)  //  28 bits, 4 ascii chars
-		0101110100001010011011010000
+	Stegdata extension (.txt)  //  28 bits, 4 ascii chars
+	0101110100001010011011010000
 
-		Stegdata (/bin/sh testcommand.sh)
-		000101111001100010001101001001101110000101111001110011001101000000100000001110100001100101001110011001110100001100011001101111001101101001101101001100001001101110001100100 000101110 001110011 001101000
+	Stegdata (/bin/sh testcommand.sh)
+	000101111001100010001101001001101110000101111001110011001101000000100000001110100001100101001110011001110100001100011001101111001101101001101101001100001001101110001100100 000101110 001110011 001101000
 
 #############################################################################################################
 #############################################################################################################
@@ -61,24 +62,34 @@ param (
 #############################################################################################################
 #>
 
-#----> Modifying script for Windows default PATH functionality
-$sOS = Get-WmiObject -class Win32_OperatingSystem
-if($sOS -ne ''){
+################################################----> Modifying script for Windows default PATH functionality
+$testpath = test-path "/bin/"
+
+#####################################################################----> If there is no /bin/, it's Windows
+if($testpath -ne "True"){
 	$tmppath = (pwd).path
 	$InFile = $tmppath + '\' + $InFile
 	$StegFile = $tmppath + '\' + $StegFile
 	$OutFile = $tmppath + '\' + $OutFile
 }
 
-#----> read bytes from input file
+#######################################################----> Otherwise it is Linux so you need / instead of \
+if($testpath -eq "True"){
+	$tmppath = (pwd).path
+	$InFile = $tmppath + '/' + $InFile
+	$StegFile = $tmppath + '/' + $StegFile
+	$OutFile = $tmppath + '/' + $OutFile	
+}
+
+############################################################################----> read bytes from input file
 $bytes = [System.IO.File]::ReadAllBytes($InFile)
 
 <#
-/////////////////////////////////////////////////////////////
-///////////////////----Ensteg function----///////////////////
-/////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+///////////////////----Enstegcmd function----///////////////////
+////////////////////////////////////////////////////////////////
 #>
-###################################################################----> if flag is not set, ensteg the file
+##############################################################----> if no desteg flag is set, ensteg the file
 if(!$destegcmd -AND !$destegraw){
 	<#
 	///////////////////----Set up steg header----///////////////////
@@ -91,7 +102,7 @@ if(!$destegcmd -AND !$destegraw){
 ###################################----> read in steg data --- need this first to add steg data length field
 	$stegbytes = [System.IO.File]::ReadAllBytes($StegFile)
 
-###############################################################----> read input command or file to be hidden
+#############################################################----> make array to store new stegged file data
 	$faststeg = @()
 
 ###########################################################################----> add steg header length info
@@ -130,7 +141,7 @@ if(!$destegcmd -AND !$destegraw){
 	$faststeg += ,$extpadded.padleft(28, "0")
 
 	<#
-	///////////////////----Read steg data from given stegfile----///////////////////
+	///////////////////----Convert steg data from given stegfile----///////////////////
 	#>
 
 #####################################################----> read in the command to steg into our output file
@@ -208,6 +219,7 @@ if(!$destegcmd -AND !$destegraw){
 			}
 			$n += 1
 		}
+############################################----> finish up writing the file without modifying bytes anymore
 		$newfile += ,$bytes[$f]
 		$f += 1
 	}
