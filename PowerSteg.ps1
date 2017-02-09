@@ -371,7 +371,14 @@ elseif($destegcmd){
 	$curbyte = @()
 	$outdata = @()
 	$tmppath = (pwd).path
-	$newoutfile = $tmppath + '\stegoutput.' + $extfinal
+
+	if($testpath -eq "False"){
+		$newoutfile = $tmppath + '\stegoutput.' + $extfinal
+	}
+
+	if($testpath -eq "True"){
+		$newoutfile = $tmppath + '/stegoutput.' + $extfinal
+	}
 
 	while($stegcounter -lt 9){
 		if($f -eq $stegend){
