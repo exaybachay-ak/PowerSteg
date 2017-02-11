@@ -48,6 +48,9 @@ param (
     [switch]$desteg = $false
 )
 
+#----> Start a timer to report how long execution takes
+$stopwatch = [system.diagnostics.stopwatch]::startNew()
+
 <#
 #############################################################################################################
 ###--- ADD FUNCTION HERE TO CHECK FOR FILETYPE AND CONVERT TO BMP IF NECESSARY ---###########################
@@ -443,6 +446,12 @@ else{
 			write-host "------------------------"
 			write-host $outdata
 			[io.file]::WriteAllText($newoutfile, $outdata)
+			
+			#----> Checking program execution time before returning from script
+			$stopwatch.stop()
+			$exectime = $stopwatch.elapsed.totalseconds
+			write-host " "
+			write-host "Script execution took $exectime seconds."
 			return
 		}
 		elseif($stegcounter -eq 8){
@@ -479,3 +488,9 @@ else{
 		}
 	}
 }
+
+$stopwatch.stop()
+$exectime = $stopwatch.elapsed.totalseconds
+
+write-host " "
+write-host "Script execution took $exectime seconds."
