@@ -2,7 +2,6 @@
 #############################################################################################################
 #############################################################################################################
 #############################################################################################################
-
        Current steg file layout below:
        <--BMPHEADER--><--STEGHEADER--><--STEGDATA--><--BMPDATA-->
                       |               \
@@ -29,18 +28,14 @@
                       |                                                         \
 		      |                                                           \
                       |--4 bytes, steg data size (in bytes)--|--4 bytes, extension--|
-
 	Example header info:::
-
 	Stegdata length (22)  // 32 bits, 4 bytes
 	00000000000000000000000000010110
 		
 	Stegdata extension (.txt)  //  28 bits, 4 ascii chars
 	0101110100001010011011010000
-
 	Stegdata (/bin/sh testcommand.sh)
 	000101111001100010001101001001101110000101111001110011001101000000100000001110100001100101001110011001110100001100011001101111001101101001101101001100001001101110001100100 000101110 001110011 001101000
-
 #############################################################################################################
 #############################################################################################################
 #############################################################################################################
@@ -50,8 +45,7 @@ param (
     [Parameter(Mandatory=$true)][string]$InFile,
     [Parameter(Mandatory=$false)][string]$OutFile,
     [Parameter(Mandatory=$false)][string]$StegFile,
-    [switch]$destegcmd = $false,
-    [switch]$destegraw = $false
+    [switch]$desteg = $false
 )
 
 <#
@@ -69,20 +63,56 @@ $testpath = test-path "/bin/"
 if($testpath -ne "True"){
 	$tmppath = (pwd).path
 	$InFile = $tmppath + '\' + $InFile
-	$StegFile = $tmppath + '\' + $StegFile
-	$OutFile = $tmppath + '\' + $OutFile
+	if($OutFile){
+		$StegFile = $tmppath + '\' + $StegFile
+		$OutFile = $tmppath + '\' + $OutFile
+	}
 }
 
 ####----> Otherwise it is Linux so you need / instead of \
 if($testpath -eq "True"){
 	$tmppath = (pwd).path
 	$InFile = $tmppath + '/' + $InFile
-	$StegFile = $tmppath + '/' + $StegFile
-	$OutFile = $tmppath + '/' + $OutFile	
+	if($OutFile){
+		$StegFile = $tmppath + '/' + $StegFile
+		$OutFile = $tmppath + '/' + $OutFile
+	}
 }
 
 ####----> read bytes from input file
 $bytes = [System.IO.File]::ReadAllBytes($InFile)
+
+
+<#########################################################################
+////////////////////----Write debugging information----///////////////////
+#########################################################################>
+if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
+	write-host "Full input file path is:"
+	write-host "------------------------"
+	write-host $InFile
+
+	write-host " "
+	write-host "Full output file path is:"
+	write-host "-------------------------"
+	if(!$OutFile){
+		write-host "Not defined"
+	}
+	else{
+		write-host $OutFile	
+	}
+
+	write-host " "
+	write-host "Full steg file path is:"
+	write-host "-----------------------"
+	if(!$StegFile){
+		write-host "Not defined"
+	}
+	else{
+		write-host $StegFile	
+	}
+	write-host " "
+}
+
 
 <#
 ////////////////////////////////////////////////////////////////
@@ -90,7 +120,10 @@ $bytes = [System.IO.File]::ReadAllBytes($InFile)
 ////////////////////////////////////////////////////////////////
 #>
 ####----> if no desteg flag is set, ensteg the file
-if(!$destegcmd -AND !$destegraw){
+if(!$desteg){
+	####----> copy infile real quick
+	Copy-Item $InFile $OutFile
+
 	<#
 	///////////////////----Set up steg header----///////////////////
 	#>
@@ -100,15 +133,19 @@ if(!$destegcmd -AND !$destegraw){
 	#>
 
 	####----> read in steg data --- need this first to add steg data length field
-	$stegbytes = [System.IO.File]::ReadAllBytes($StegFile)
+	[byte[]] $stegbytes = [System.IO.File]::ReadAllBytes($stegfile)
 
 	####----> make array to store new stegged file data
-	$faststeg = @()
+	$stegarr = @()
 
 	####----> add steg header length info
 	$stegdatalen = $stegbytes.length
 	$stegdatalen = [convert]::tostring($stegdatalen, 2).padleft(32, "0")
-	$faststeg += ,$stegdatalen
+	$stegarr += ,$stegdatalen
+
+	write-host "Inserted steg data length header is:"
+	write-host "------------------------------------"
+	write-host $stegdatalen
 
 	<#
 	///////////////////----Add steg extension field----///////////////////
@@ -134,106 +171,111 @@ if(!$destegcmd -AND !$destegraw){
 	$g = 0
 	foreach ($c in $extarr){
 		$c = [convert]::tostring($c, 2).padleft(7, "0")
-		$extpadded += ,$c
+		$extpadded += $c
 	}
 
 	$extpadded = [system.string]::Join("",($extpadded))
-	$faststeg += ,$extpadded.padleft(28, "0")
+	$stegarr += ,$extpadded.padleft(28, "0")
+
+	write-host " "
+	write-host "Inserted steg extension header is:"
+	write-host "----------------------------------"
+	write-host $extpadded
 
 	<#
 	///////////////////----Convert steg data from given stegfile----///////////////////
 	#>
 
+	write-host " "
+	write-host "File data to be inserted:"
+	write-host "-------------------------"
+	write-host $stegbytes
+
 	####----> read in the command to steg into our output file
 	foreach ($b in $stegbytes){
 		$b = [convert]::tostring($b, 2).padleft(9, "0")
-		$faststeg += $b
+		$stegarr += ,$b
 	}
 
 	####----> remove spaces and prep array for inserting into file
-	$faststeg = [system.string]::Join("",($faststeg))
+	$stegarr = [system.string]::Join("",($stegarr))
 
-	<#
-	///////////////////----Provision array and start populating steg outfile----///////////////////
-	#>
+	write-host " "
+	write-host "Inserted steg information is:"
+	write-host "-----------------------------"
+	write-host $stegarr
 
-	####----> make an array for the new file, and put header info into it
-	$newfile = New-Object System.Collections.Generic.List[System.Decimal]
-	####----> populate array for bit shifting
-	for ($a=0; $a -lt 54; $a++){
-		$newfile += ,$bytes[$a]
-	}
+	####----> read in data for inserting steganography bits
+	$filereadStream = [System.IO.File]::Open($infile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+	$reader = New-Object System.IO.BinaryReader($filereadStream)
+	$reader.BaseStream.Position = 54;
+	$carrierbytes = $reader.ReadBytes($stegarr.length)
+	$reader.close()
 
-	$newarray = @()
-	$x = 0
-	while ($x -le $faststeg.length) {
-		$v = $faststeg[$x]
-		$v = [Int]$v
-		if ($v -eq 49){
-			$v = 1
+	####----> privision array and add stegged data into it
+	[byte[]] $stegdata = @()
+	$j = 0
+	while($j -le $stegarr.length-1){
+		####----> check to see if image data byte is even, meaning LSB is 0
+		if($carrierbytes[$j] % 2 -eq 0){
+			if($stegarr[$j] -eq '1'){
+				$stegdata += $carrierbytes[$j] + 1
+			}
+			else{
+				$stegdata += $carrierbytes[$j]
+			}
 		}
+		####----> otherwise, image data byte is odd, with LSB of 1
 		else{
-			$v = 0
+			if($stegarr[$j] -eq '1'){
+				$stegdata += $carrierbytes[$j]
+			}
+			else{
+				$stegdata += $carrierbytes[$j] - 1			
+			}
 		}
-		$newarray += ,$v
-		$x += 1
+		$j += 1
 	}
 
+	<#########################################################################
+	////////////////////----Write debugging information----///////////////////
+	#########################################################################>
+	if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
+		write-host " "
+		write-host "Default image data is:"
+		write-host "----------------------"
+		write-host $carrierbytes
+
+		write-host " "
+		write-host "Inserted steg data is:"
+		write-host "----------------------"
+		write-host $stegdata
+
+		write-host " "
+		write-host "Data format is:"
+		write-host "---------------"
+		write-host $stegdata.gettype()
+		write-host " "
+	}
 	<#
 	///////////////////----Begin actual steg operations, inserting bits into data----///////////////////
 	#>
 
-	####----> set up countdown variables for embedding steg data
-	$stegcountdown = $newarray.length + 54
-	$n = 0
-	$f = 54
-	####----> iterator loop for reconstructing new file
-	while($f -lt $bytes.length){
-		####----> insert steg data into file
-		while($f -le $stegcountdown){
-			####----> check if the number is even, meaning LSB is 0 
-			if($bytes[$f] % 2 -eq 0){
-				####----> now check if steg data is 1.  if it is, adjust newfile by 1
-				if($newarray[$n] -eq 1){
-					$curbyte = $bytes[$f] + 1
-					$newfile += ,$curbyte
-					$f += 1
-				}
-				####----> if steg data is 0 just insert actual image data
-				else{
-					$newfile += ,$bytes[$f]
-					$f += 1
-				}
-			}
-			####----> if the number is not even... meaning LSB is 1
-			else{
-				if($newarray[$n] -eq 1){
-					$newfile += ,$bytes[$f]
-					$f += 1
-				}
-				else{
-					$curbyte = $bytes[$f] - 1
-					$newfile += ,$curbyte
-					$f += 1
-				}
-			}
-			$n += 1
-		}
-		####----> finish up writing the file without modifying bytes anymore
-		$newfile += ,$bytes[$f]
-		$f += 1
-	}
-	[io.file]::WriteAllBytes($OutFile, $newfile)
-	return
+	# stream out the bytes array into the target file
+	$fileStream = [System.IO.File]::Open($OutFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+	$writer = New-Object System.IO.BinaryWriter($fileStream)
+	$writer.BaseStream.Position = 54;
+	$writer.write($stegdata)
+	$writer.Close()
 }
 
 <#
-////////////////////////////////////////////////////////////////
-///////////////////----Destegcmd function----///////////////////
-////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////
+///////////////////----Desteg function----///////////////////
+/////////////////////////////////////////////////////////////
 #>
-####----> if parameter is set, desteg command from the stegged file
-elseif($destegcmd){
+####----> if desteg switch is not set, desteg command from the stegged file
+else{
 	####----> Start reading after end of BMP header
 	$f = 54
 	####----> Set end of loop to be after steg size (54 plus 31)
@@ -253,21 +295,24 @@ elseif($destegcmd){
 		####----> Check to see if byte is 1
 		if($bytes[$f] -eq 1){
 			$steglength += 1
-			$f += 1
 		}
 		####----> Check to see if LSB is 0
 		elseif($bytes[$f] % 2 -eq 0){
 			$steglength += 0
-			$f += 1
-		}
+			}
 		####----> Otherwise LSB is 1
 		else{
 			$steglength += 1
-			$f += 1
 		}
+		$f += 1
 	}
 	$steglength = [system.string]::Join("",($steglength))
-	$steglength = [convert]::tobyte($steglength,2)
+	$steglength = [convert]::toint32($steglength,2)
+
+	write-host "Steg data length is:"
+	write-host "--------------------"
+	write-host $steglength
+
 	<#
 	///////////////////----Retrieve steg extension data----///////////////////
 	#>
@@ -357,6 +402,11 @@ elseif($destegcmd){
 
 	$extfinal = [system.string]::Join("",($extfinal))
 
+	write-host " "
+	write-host "Extension information is:"
+	write-host "-------------------------"
+	write-host $extfinal
+
 	<#
 	///////////////////----Retrieve steg data----///////////////////
 	#>
@@ -387,6 +437,10 @@ elseif($destegcmd){
 				$outdata += $x
 			}
 			$outdata = [system.string]::Join("",($outdata))
+
+			write-host " "
+			write-host "Embedded information is:"
+			write-host "------------------------"
 			write-host $outdata
 			[io.file]::WriteAllText($newoutfile, $outdata)
 			return
@@ -425,23 +479,3 @@ elseif($destegcmd){
 		}
 	}
 }
-
-<#
-////////////////////////////////////////////////////////////////
-///////////////////----Destegraw function----///////////////////
-////////////////////////////////////////////////////////////////
-#>
-####----> if parameter is set, desteg the data from stegged file
-elseif($destegraw){
-	write-host "Add in destegraw functionality for data exfil"
-}
-
-###########################################
-###--- ~3:42 execution for 57kb file ---###
-###########################################
-#
-###########################################
-###--- ~0:01 execution for 1kb file  ---###
-###########################################
-###--- Next step is performance tuning -###
-###########################################
