@@ -116,7 +116,6 @@ if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
 	write-host " "
 }
 
-
 <#
 ////////////////////////////////////////////////////////////////
 ///////////////////----Enstegcmd function----///////////////////
@@ -124,7 +123,20 @@ if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
 #>
 ####----> if no desteg flag is set, ensteg the file
 if(!$desteg){
-	####----> copy infile real quick
+	####----> If the data to be added is larger than the target file, notify user and halt execution
+	$lengthcheck = (get-item $stegfile).length * 8
+	$lengthcheck = $lengthcheck + 60
+
+	$carriercheck = $bytes.length - 54
+	write-host "There are $carriercheck bytes available for adding steg data."
+	write-host " "
+
+	if($carriercheck -lt $lengthcheck){
+		write-host "Your input data is too large for the carrier file.  Please find a larger BMP carrier and try again.  Your file requires $lengthcheck bytes, but your carrier file only has $carriercheck bytes."
+		return
+	}
+
+	####----> copy infile for writing output to
 	Copy-Item $InFile $OutFile
 
 	<#
@@ -146,9 +158,15 @@ if(!$desteg){
 	$stegdatalen = [convert]::tostring($stegdatalen, 2).padleft(32, "0")
 	$stegarr += ,$stegdatalen
 
+	$stegdatalendecimal = [convert]::toint32($stegdatalen, 2)
 	write-host "Inserted steg data length header is:"
 	write-host "------------------------------------"
-	write-host $stegdatalen
+	write-host $stegdatalen "or $stegdatalendecimal bytes"
+
+	write-host " "
+	write-host "The total amount of steg data bits to be added is:"
+	write-host "--------------------------------------------------"
+	write-host $lengthcheck
 
 	<#
 	///////////////////----Add steg extension field----///////////////////
@@ -183,30 +201,29 @@ if(!$desteg){
 	write-host " "
 	write-host "Inserted steg extension header is:"
 	write-host "----------------------------------"
-	write-host $extpadded
+	write-host $extpadded "or $extension"
+
+	####----> Expect ~190 bits added per second
+	####----> 3975 bits in ~4.4s, 18159 bits in ~93s, and 40868 bits in ~520 seconds, 55588 bits in ~957 seconds
+	####----> Estimating time appears to be meaningless.  Time seems to increase exponentially as size goes up.
+	[int]$completionseconds = $lengthcheck / 190
+	$completionminutes = $completionseconds / 60
+	write-host " "
+	write-host "Estimated completion time is:"
+	write-host $completionseconds "seconds or $completionminutes minutes"
 
 	<#
 	///////////////////----Convert steg data from given stegfile----///////////////////
 	#>
 
-	write-host " "
-	write-host "File data to be inserted:"
-	write-host "-------------------------"
-	write-host $stegbytes
-
 	####----> read in the command to steg into our output file
 	foreach ($b in $stegbytes){
-		$b = [convert]::tostring($b, 2).padleft(9, "0")
+		$b = [convert]::tostring($b, 2).padleft(8, "0")
 		$stegarr += ,$b
 	}
 
 	####----> remove spaces and prep array for inserting into file
 	$stegarr = [system.string]::Join("",($stegarr))
-
-	write-host " "
-	write-host "Inserted steg information is:"
-	write-host "-----------------------------"
-	write-host $stegarr
 
 	####----> read in data for inserting steganography bits
 	$filereadStream = [System.IO.File]::Open($infile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
@@ -220,7 +237,7 @@ if(!$desteg){
 	$j = 0
 	while($j -le $stegarr.length-1){
 		####----> check to see if image data byte is even, meaning LSB is 0
-		if($carrierbytes[$j] % 2 -eq 0){
+		if(($carrierbytes[$j] -band 1) -eq 0){
 			if($stegarr[$j] -eq '1'){
 				$stegdata += $carrierbytes[$j] + 1
 			}
@@ -248,6 +265,16 @@ if(!$desteg){
 		write-host "Default image data is:"
 		write-host "----------------------"
 		write-host $carrierbytes
+
+		write-host " "
+		write-host "File data to be inserted:"
+		write-host "-------------------------"
+		write-host $stegbytes
+
+		write-host " "
+		write-host "Steg bits are:"
+		write-host "--------------"
+		write-host $stegarr
 
 		write-host " "
 		write-host "Inserted steg data is:"
@@ -396,7 +423,7 @@ else{
 	$stegdata = @()
 
 	####----> Loop through and get data for insertion into array
-	$steglength = $steglength * 9
+	$steglength = $steglength * 8
 	$stegend = $f + $steglength
 	$curbyte = @()
 	$outdata = @()
@@ -425,8 +452,8 @@ else{
 
 	####----> Retrieve stegged info for writing out to file
 	while($s -lt $steglength){
-		while($iter -le 8){
-			if($iter -eq 8){
+		while($iter -le 7){
+			if($iter -eq 7){
 				if(($displaystegdata[$s] -band 1) -eq 0){
 					$stegbyte += 0
 				}
@@ -456,7 +483,7 @@ else{
 }
 
 $stopwatch.stop()
-$exectime = $stopwatch.elapsed.totalseconds
+[int]$exectime = $stopwatch.elapsed.totalseconds
 
 write-host " "
 write-host "Script execution took $exectime seconds."
