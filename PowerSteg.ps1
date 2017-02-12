@@ -220,7 +220,7 @@ if(!$desteg){
 	$j = 0
 	while($j -le $stegarr.length-1){
 		####----> check to see if image data byte is even, meaning LSB is 0
-		if($carrierbytes[$j] % 2 -eq 0){
+		if(($carrierbytes[$j] -band 1) -eq 0){
 			if($stegarr[$j] -eq '1'){
 				$stegdata += $carrierbytes[$j] + 1
 			}
@@ -295,18 +295,14 @@ else{
 
 	####----> Loop through steg header length and put into array
 	while($f -le $sizeloop){
-		####----> Check to see if byte is 1
-		if($bytes[$f] -eq 1){
-			$steglength += 1
+		####----> Check to see if byte is 0
+		if(($bytes[$f] -band 1) -eq 0){
+			$steglength += 0
 		}
 		####----> Check to see if LSB is 0
-		elseif($bytes[$f] % 2 -eq 0){
-			$steglength += 0
-			}
-		####----> Otherwise LSB is 1
 		else{
 			$steglength += 1
-		}
+			}
 		$f += 1
 	}
 	$steglength = [system.string]::Join("",($steglength))
@@ -325,17 +321,12 @@ else{
 
 	####----> Loop through steg extension data and put into array
 	while($f -le $extloop){
-		####----> Check to see if byte is 1
-		if($bytes[$f] -eq 1){
-			$extension += 1
-			$f += 1
-		}
-		####----> Check to see if LSB is 0
-		elseif($bytes[$f] % 2 -eq 0){
+		####----> Check to see if byte is 0
+		if(($bytes[$f] -band 1) -eq 0){
 			$extension += 0
 			$f += 1
 		}
-		####----> Otherwise LSB is 1
+		####----> Check to see if LSB is 1
 		else{
 			$extension += 1
 			$f += 1
@@ -353,20 +344,17 @@ else{
 	while ($a -le $extension.length-1){
 		if($a -lt 7){
 			$extbyte1 += $extension[$a]
-			$a += 1
 		}
 		elseif($a -lt 14){
 			$extbyte2 += $extension[$a]
-			$a += 1
 		}
 		elseif($a -lt 21){
 			$extbyte3 += $extension[$a]
-			$a += 1
 		}
 		else{
 			$extbyte4 += $extension[$a]
-			$a += 1
 		}
+		$a += 1
 	}
 
 	####----> Flatten bytes and convert to ascii chars
@@ -455,7 +443,7 @@ else{
 			return
 		}
 		elseif($stegcounter -eq 8){
-			if($bytes[$f] % 2 -eq 0){
+			if(($bytes[$f] -band 1) -eq 0){
 				$curbyte += 0
 				$f += 1
 				$stegcounter = 0
@@ -475,7 +463,7 @@ else{
 			}
 		}
 		else{
-			if($bytes[$f] % 2 -eq 0){
+			if(($bytes[$f] -band 1) -eq 0){
 				$curbyte += 0
 				$f += 1
 				$stegcounter += 1
