@@ -220,7 +220,7 @@ if(!$desteg){
 	$j = 0
 	while($j -le $stegarr.length-1){
 		####----> check to see if image data byte is even, meaning LSB is 0
-		if(($carrierbytes[$j] -band 1) -eq 0){
+		if($carrierbytes[$j] % 2 -eq 0){
 			if($stegarr[$j] -eq '1'){
 				$stegdata += $carrierbytes[$j] + 1
 			}
@@ -299,10 +299,10 @@ else{
 		if(($bytes[$f] -band 1) -eq 0){
 			$steglength += 0
 		}
-		####----> Check to see if LSB is 0
+		####----> Check to see if LSB is 1
 		else{
 			$steglength += 1
-			}
+		}
 		$f += 1
 	}
 	$steglength = [system.string]::Join("",($steglength))
@@ -324,79 +324,69 @@ else{
 		####----> Check to see if byte is 0
 		if(($bytes[$f] -band 1) -eq 0){
 			$extension += 0
-			$f += 1
 		}
 		####----> Check to see if LSB is 1
 		else{
 			$extension += 1
-			$f += 1
 		}
+		$f += 1
 	}
 	$extension = [system.string]::Join("",($extension))
 
-	####----> Make arrays to store extension information
-	$extbyte1 = @()
-	$extbyte2 = @()
-	$extbyte3 = @()
-	$extbyte4 = @()
-
-	$a = 0
-	while ($a -le $extension.length-1){
-		if($a -lt 7){
-			$extbyte1 += $extension[$a]
+	####----> Make array and store extension information
+	$extbyte = @()
+	$k = 0
+	$i = 0
+	while ($k -le 27){
+		while($i -le 6){
+			if($i -eq 6){
+				if(($extension[$k] -band 1) -eq 0){
+					$extbyte += 0
+				}
+				else{
+					$extbyte += 1
+				}
+				$extbyte = [system.string]::join("",($extbyte))
+				$extbyte = [convert]::tobyte($extbyte, 2)
+				$extbyte = [convert]::tochar($extbyte)
+				$extfinal += $extbyte
+				$extbyte = @()
+			}
+			elseif(($extension[$k] -band 1) -eq 0){
+				$extbyte += 0
+			}
+			else{
+				$extbyte += 1
+			}
+		$i += 1
+		$k += 1
 		}
-		elseif($a -lt 14){
-			$extbyte2 += $extension[$a]
-		}
-		elseif($a -lt 21){
-			$extbyte3 += $extension[$a]
-		}
-		else{
-			$extbyte4 += $extension[$a]
-		}
-		$a += 1
+	$i = 0
 	}
 
-	####----> Flatten bytes and convert to ascii chars
-	$extbyte1 = [system.string]::Join("",($extbyte1))
-	$extbyte2 = [system.string]::Join("",($extbyte2))
-	$extbyte3 = [system.string]::Join("",($extbyte3))
-	$extbyte4 = [system.string]::Join("",($extbyte4))
+	$extout = @()
 
-	$extbyte1 = [convert]::tobyte($extbyte1,2)
-	$extbyte2 = [convert]::tobyte($extbyte2,2)
-	$extbyte3 = [convert]::tobyte($extbyte3,2)
-	$extbyte4 = [convert]::tobyte($extbyte4,2)
-
-	####----> Check the contents of extbyte1
-	if($extbyte1 -eq '0'){
-		$extbyte2 = [convert]::tochar($extbyte2)
-		$extbyte3 = [convert]::tochar($extbyte3)
-		$extbyte4 = [convert]::tochar($extbyte4)
-
-		$extfinal += $extbyte2
-		$extfinal += $extbyte3
-		$extfinal += $extbyte4
+	####----> If the extension data only has 3 values, just store those 3
+	if($extfinal[0] -eq 0){
+		1..3 | % {
+			$extout += [convert]::tochar($extfinal[$_])
+		}
 	}
 
+	####----> Otherwise, store all 4 values for writing the file later
 	else{
-		$extbyte1 = [convert]::tochar($extbyte1)
-		$extbyte2 = [convert]::tochar($extbyte2)
-		$extbyte3 = [convert]::tochar($extbyte3)
-		$extbyte4 = [convert]::tochar($extbyte4)
-
-		$extfinal += $extbyte1
-		$extfinal += $extbyte2
-		$extfinal += $extbyte3
-		$extfinal += $extbyte4
+		foreach($b in $extfinal){
+			$extout += [convert]::tochar($b)
+		}
 	}
 
-	$extfinal = [system.string]::Join("",($extfinal))
+	$extout = [system.string]::Join("",($extout))
 
 	write-host " "
 	write-host "Extension information is:"
 	write-host "-------------------------"
-	write-host $extfinal
+	write-host $extout
+	write-host " "
 
 	<#
 	///////////////////----Retrieve steg data----///////////////////
@@ -408,73 +398,61 @@ else{
 	####----> Loop through and get data for insertion into array
 	$steglength = $steglength * 9
 	$stegend = $f + $steglength
-	$stegcounter = 0
 	$curbyte = @()
 	$outdata = @()
 	$tmppath = (pwd).path
 
 	if($testpath -eq "False"){
-		$newoutfile = $tmppath + '\stegoutput.' + $extfinal
+		$newoutfile = $tmppath + '\stegoutput.' + $extout
 	}
 
 	if($testpath -eq "True"){
-		$newoutfile = $tmppath + '/stegoutput.' + $extfinal
+		$newoutfile = $tmppath + '/stegoutput.' + $extout
 	}
 
-	while($stegcounter -lt 9){
-		if($f -eq $stegend){
-			foreach ($x in $stegdata){
-				$x = [convert]::tochar($x)
-				$outdata += $x
-			}
-			$outdata = [system.string]::Join("",($outdata))
+	####----> read in data for retrieving steganography data bits
+	$filereadStream = [System.IO.File]::Open($infile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+	$reader = New-Object System.IO.BinaryReader($filereadStream)
+	$reader.BaseStream.Position = 114;
+	$displaystegdata = $reader.ReadBytes($steglength)
+	$reader.close()
 
-			write-host " "
-			write-host "Embedded information is:"
-			write-host "------------------------"
-			write-host $outdata
-			[io.file]::WriteAllText($newoutfile, $outdata)
-			
-			#----> Checking program execution time before returning from script
-			$stopwatch.stop()
-			$exectime = $stopwatch.elapsed.totalseconds
-			write-host " "
-			write-host "Script execution took $exectime seconds."
-			return
-		}
-		elseif($stegcounter -eq 8){
-			if(($bytes[$f] -band 1) -eq 0){
-				$curbyte += 0
-				$f += 1
-				$stegcounter = 0
-				$curbyte = [system.string]::Join("",($curbyte))
-				$curbyte = [convert]::toint32($curbyte, 2)
-				$stegdata += $curbyte
-				$curbyte = @()
+	####----> Set up variables for writing out steg data
+	$stegout = @()
+	$stegbyte = @()
+	$s = 0
+	$iter = 0
+
+	####----> Retrieve stegged info for writing out to file
+	while($s -lt $steglength){
+		while($iter -le 8){
+			if($iter -eq 8){
+				if(($displaystegdata[$s] -band 1) -eq 0){
+					$stegbyte += 0
+				}
+				else{
+					$stegbyte += 1
+				}
+				$stegbyte = [system.string]::Join("",($stegbyte))
+				$stegbyte = [convert]::toint32($stegbyte, 2)
+				$stegout += $stegbyte
+				$stegbyte = @()
+			}
+			elseif(($displaystegdata[$s] -band 1) -eq 0){ 
+				$stegbyte += 0
 			}
 			else{
-				$curbyte += 1
-				$f += 1
-				$stegcounter = 0
-				$curbyte = [system.string]::Join("",($curbyte))
-				$curbyte = [convert]::toint32($curbyte, 2)
-				$stegdata += $curbyte
-				$curbyte = @()
+				$stegbyte += 1
 			}
-		}
-		else{
-			if(($bytes[$f] -band 1) -eq 0){
-				$curbyte += 0
-				$f += 1
-				$stegcounter += 1
-			}
-			else{
-				$curbyte += 1
-				$f += 1
-				$stegcounter += 1
-			}
-		}
+			$iter += 1
+			$s += 1
+		}	
+	$iter = 0
 	}
+
+	write-host $stegout
+	write-host $newoutfile
+	[io.file]::WriteAllBytes($newoutfile, $stegout)
 }
 
 $stopwatch.stop()
