@@ -236,23 +236,13 @@ if(!$desteg){
 	[byte[]] $stegdata = @()
 	$j = 0
 	while($j -le $stegarr.length-1){
-		####----> check to see if image data byte is even, meaning LSB is 0
-		if(($carrierbytes[$j] -band 1) -eq 0){
-			if($stegarr[$j] -eq '1'){
-				$stegdata += $carrierbytes[$j] + 1
-			}
-			else{
-				$stegdata += $carrierbytes[$j]
-			}
+		####----> If the steg data bit is a 1, do AND op to ensure LSB is 1
+		if($stegarr[$j] -eq '1'){
+			$stegdata += $carrierbytes[$j] -bor 1
 		}
-		####----> otherwise, image data byte is odd, with LSB of 1
+		####----> Otherwise, use XOR to ensure LSB is 0
 		else{
-			if($stegarr[$j] -eq '1'){
-				$stegdata += $carrierbytes[$j]
-			}
-			else{
-				$stegdata += $carrierbytes[$j] - 1			
-			}
+			$stegdata += $carrierbytes[$j] -band 254
 		}
 		$j += 1
 	}
