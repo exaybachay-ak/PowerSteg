@@ -26,7 +26,7 @@
                       |                                                     \
                       |                                                       \
                       |                                                         \
-		      |                                                           \
+				      |                                                           \
                       |--4 bytes, steg data size (in bytes)--|--4 bytes, extension--|
 
 	Example header info:::
@@ -133,6 +133,7 @@ if(!$desteg){
 	$lengthcheck = $lengthcheck + 60
 
 	$carriercheck = $bytes - 54
+	write-host " "
 	write-host "There are $carriercheck bytes available for adding steg data."
 	write-host " "
 
@@ -317,51 +318,51 @@ else{
 	///////////////////----Retrieve steg data size----///////////////////
 	#>
 	####----> Make an array for compiling info about header
-	$steglength = @()
-	$stegmultiple = @()
+	$steglength = New-Object System.Collections.Generic.List[System.String]
 
 	####----> Loop through steg header length and put into array
 	while($f -le $sizeloop){
 		####----> Check to see if byte is 0
 		if(($bytes[$f] -band 1) -eq 0){
-			$steglength += 0
+			$steglength.Add('0')
 		}
 		####----> Check to see if LSB is 1
 		else{
-			$steglength += 1
+			$steglength.Add('1')
 		}
 		$f += 1
 	}
 	$steglength = [system.string]::Join("",($steglength))
 	$steglength = [convert]::toint32($steglength,2)
 
+	write-host " "
 	write-host "Steg data length is:"
 	write-host "--------------------"
-	write-host $steglength
+	write-host ($steglength * 8)
 
 	<#
 	///////////////////----Retrieve steg extension data----///////////////////
 	#>
 	####----> Make arrays for compiling info about extension
-	$extension = @()
-	$extfinal = @()
+	$extension = New-Object System.Collections.Generic.List[System.String]
+	$extfinal = New-Object System.Collections.Generic.List[System.String]
 
 	####----> Loop through steg extension data and put into array
 	while($f -le $extloop){
 		####----> Check to see if byte is 0
 		if(($bytes[$f] -band 1) -eq 0){
-			$extension += 0
+			$extension.Add('0')
 		}
 		####----> Check to see if LSB is 1
 		else{
-			$extension += 1
+			$extension.Add('1')
 		}
 		$f += 1
 	}
 	$extension = [system.string]::Join("",($extension))
 
 	####----> Make array and store extension information
-	$extbyte = @()
+	$extbyte = New-Object System.Collections.Generic.List[System.String]
 	$k = 0
 	$i = 0
 	while ($k -le 27){
@@ -445,8 +446,8 @@ else{
 	$reader.close()
 
 	####----> Set up variables for writing out steg data
-	$stegout = @()
-	$stegbyte = @()
+	$stegout = New-Object System.Collections.Generic.List[System.Byte]
+	$stegbyte = New-Object System.Collections.Generic.List[System.String]
 	$s = 0
 	$iter = 0
 
@@ -455,21 +456,21 @@ else{
 		while($iter -le 7){
 			if($iter -eq 7){
 				if(($displaystegdata[$s] -band 1) -eq 0){
-					$stegbyte += 0
+					$stegbyte.Add('0')
 				}
 				else{
-					$stegbyte += 1
+					$stegbyte.Add('1')
 				}
 				$stegbyte = [system.string]::Join("",($stegbyte))
 				$stegbyte = [convert]::toint32($stegbyte, 2)
-				$stegout += $stegbyte
-				$stegbyte = @()
+				$stegout.Add($stegbyte)
+				$stegbyte = New-Object System.Collections.Generic.List[System.String]
 			}
 			elseif(($displaystegdata[$s] -band 1) -eq 0){ 
-				$stegbyte += 0
+				$stegbyte.Add('0')
 			}
 			else{
-				$stegbyte += 1
+				$stegbyte.Add('1')
 			}
 			$iter += 1
 			$s += 1
@@ -477,8 +478,6 @@ else{
 	$iter = 0
 	}
 
-	write-host $stegout
-	write-host $newoutfile
 	[io.file]::WriteAllBytes($newoutfile, $stegout)
 }
 
