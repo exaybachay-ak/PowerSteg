@@ -26,7 +26,7 @@
                       |                                                     \
                       |                                                       \
                       |                                                         \
-				      |                                                           \
+		      |                                                           \
                       |--4 bytes, steg data size (in bytes)--|--4 bytes, extension--|
 
 	Example header info:::
