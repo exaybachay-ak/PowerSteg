@@ -125,8 +125,6 @@ if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
 #>
 ####----> if no desteg flag is set, ensteg the file
 if(!$desteg){
-	write-host "MEASURING -- READING IN DATA LENGTH AND COPYING FILE"
-
 	####----> read bytes from input file
 	$bytes = (get-item $infile).length
 
@@ -154,8 +152,6 @@ if(!$desteg){
 	<#
 	///////////////////----Add steg data length field----///////////////////
 	#>
-
-	write-host "MEASURING -- ADDING DATA LENGTH"
 
 	####----> read in steg data --- need this first to add steg data length field
 	#[byte[]] $stegbytes = get-content -encoding byte -path $stegfile
@@ -219,8 +215,6 @@ if(!$desteg){
 	///////////////////----Convert steg data from given stegfile----///////////////////
 	#>
 
-	write-host "MEASURING -- READING DATA IN"
-
 	####----> read in the command to steg into our output file
 	foreach ($b in $stegbytes){
 		$b = [convert]::tostring($b, 2).padleft(8, "0")
@@ -241,9 +235,6 @@ if(!$desteg){
 	#    get-content is at least 4 times as SLOW -- do NOT use that
 	#    binaryreader is right there with readallbytes
 	#    streamreader is ???
-
-
-	write-host "MEASURING -- ENSTEGGED ARRAY CREATION"
 
 	####----> Make an array and then populate it with enstegged data
 	$stegdatalist = New-Object System.Collections.Generic.List[System.Byte]
@@ -295,8 +286,6 @@ if(!$desteg){
 	<#
 	///////////////////----Begin actual steg operations, inserting bits into data----///////////////////
 	#>
-
-	write-host "MEASURING -- STREAMING DATA TO FILE"
 
 	# stream out the bytes array into the target file
 	$fileStream = [System.IO.File]::Open($OutFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
