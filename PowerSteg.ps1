@@ -26,16 +26,22 @@
                       |                                                     \
                       |                                                       \
                       |                                                         \
-		      |                                                           \
+				      |                                                           \
                       |--4 bytes, steg data size (in bytes)--|--4 bytes, extension--|
+
 	Example header info:::
-	Stegdata length (22)  // 32 bits, 4 bytes
-	00000000000000000000000000010110
-		
-	Stegdata extension (.txt)  //  28 bits, 4 ascii chars
-	0101110100001010011011010000
-	Stegdata (/bin/sh testcommand.sh)
-	000101111001100010001101001001101110000101111001110011001101000000100000001110100001100101001110011001110100001100011001101111001101101001101101001100001001101110001100100 000101110 001110011 001101000
+	Stegdata length (19)  // 32 bits, 4 bytes
+	00000000000000000000000000010011
+
+	Stegdata extension (txt)  //  28 bits, 4 ascii chars
+	111010011110001110100
+
+	Stegdata (testing new cmd.sh)
+	00000000000000000000000000010011000000011101001111000111010001110100011001010111001101110100011010010110111001100111001000000110111001100101011101110010000001100011011011010110010000101110011100110110100000001010
+
+	Full data for insertion:
+	0000000000000000000000000001001111101001111000111010000000000000000000000000000010011000000011101001111000111010001110100011001010111001101110100011010010110111001100111001000000110111001100101011101110010000001100011011011010110010000101110011100110110100000001010
+
 #############################################################################################################
 #############################################################################################################
 #############################################################################################################
@@ -82,10 +88,6 @@ if($testpath -eq "True"){
 	}
 }
 
-####----> read bytes from input file
-$bytes = [System.IO.File]::ReadAllBytes($InFile)
-
-
 <#########################################################################
 ////////////////////----Write debugging information----///////////////////
 #########################################################################>
@@ -123,11 +125,16 @@ if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
 #>
 ####----> if no desteg flag is set, ensteg the file
 if(!$desteg){
+	write-host "MEASURING -- READING IN DATA LENGTH AND COPYING FILE"
+
+	####----> read bytes from input file
+	$bytes = (get-item $infile).length
+
 	####----> If the data to be added is larger than the target file, notify user and halt execution
 	$lengthcheck = (get-item $stegfile).length * 8
 	$lengthcheck = $lengthcheck + 60
 
-	$carriercheck = $bytes.length - 54
+	$carriercheck = $bytes - 54
 	write-host "There are $carriercheck bytes available for adding steg data."
 	write-host " "
 
@@ -139,6 +146,7 @@ if(!$desteg){
 	####----> copy infile for writing output to
 	Copy-Item $InFile $OutFile
 
+
 	<#
 	///////////////////----Set up steg header----///////////////////
 	#>
@@ -147,16 +155,19 @@ if(!$desteg){
 	///////////////////----Add steg data length field----///////////////////
 	#>
 
+	write-host "MEASURING -- ADDING DATA LENGTH"
+
 	####----> read in steg data --- need this first to add steg data length field
-	[byte[]] $stegbytes = [System.IO.File]::ReadAllBytes($stegfile)
+	#[byte[]] $stegbytes = get-content -encoding byte -path $stegfile
+	[byte[]] $stegbytes = [system.io.file]::readallbytes($stegfile)
 
 	####----> make array to store new stegged file data
-	$stegarr = @()
+	$stegarr = New-Object System.Collections.Generic.List[System.String]
 
 	####----> add steg header length info
 	$stegdatalen = $stegbytes.length
 	$stegdatalen = [convert]::tostring($stegdatalen, 2).padleft(32, "0")
-	$stegarr += ,$stegdatalen
+	$stegarr.Add($stegdatalen)
 
 	$stegdatalendecimal = [convert]::toint32($stegdatalen, 2)
 	write-host "Inserted steg data length header is:"
@@ -167,6 +178,7 @@ if(!$desteg){
 	write-host "The total amount of steg data bits to be added is:"
 	write-host "--------------------------------------------------"
 	write-host $lengthcheck
+
 
 	<#
 	///////////////////----Add steg extension field----///////////////////
@@ -180,46 +192,39 @@ if(!$desteg){
 	$extension = $extension -replace "\.", ""
 
 	####----> add extension to 4-byte header array
-	$extarr = @()
-	$e = 0
-	while ($e -le $extension.length-1){
-		$d = [int][char]$extension[$e]
-		$extarr += ,$d
-		$e += 1
+	$extarr = New-Object System.Collections.ArrayList
+	for ($i = 0; $i -le $extension.length-1; $i++){
+		$d = [int][char]$extension[$i]
+		[void]$extarr.Add($d)
 	}
 
-	$extpadded = @()
+	$extpaddedlist = New-Object System.Collections.Generic.List[System.String]
 	$g = 0
 	foreach ($c in $extarr){
 		$c = [convert]::tostring($c, 2).padleft(7, "0")
-		$extpadded += $c
+		[void]$extpaddedlist.Add($c)
 	}
+	$extpadded = $extpaddedlist.ToArray()
 
 	$extpadded = [system.string]::Join("",($extpadded))
-	$stegarr += ,$extpadded.padleft(28, "0")
+	$stegarr.Add($extpadded.padleft(28, "0"))
 
 	write-host " "
 	write-host "Inserted steg extension header is:"
 	write-host "----------------------------------"
 	write-host $extpadded "or $extension"
 
-	####----> Expect ~190 bits added per second
-	####----> 3975 bits in ~4.4s, 18159 bits in ~93s, and 40868 bits in ~520 seconds, 55588 bits in ~957 seconds
-	####----> Estimating time appears to be meaningless.  Time seems to increase exponentially as size goes up.
-	[int]$completionseconds = $lengthcheck / 190
-	$completionminutes = $completionseconds / 60
-	write-host " "
-	write-host "Estimated completion time is:"
-	write-host $completionseconds "seconds or $completionminutes minutes"
 
 	<#
 	///////////////////----Convert steg data from given stegfile----///////////////////
 	#>
 
+	write-host "MEASURING -- READING DATA IN"
+
 	####----> read in the command to steg into our output file
 	foreach ($b in $stegbytes){
 		$b = [convert]::tostring($b, 2).padleft(8, "0")
-		$stegarr += ,$b
+		$stegarr += $b
 	}
 
 	####----> remove spaces and prep array for inserting into file
@@ -231,21 +236,31 @@ if(!$desteg){
 	$reader.BaseStream.Position = 54;
 	$carrierbytes = $reader.ReadBytes($stegarr.length)
 	$reader.close()
+	
+	#### TESTING FILE READ PERFORMANCE
+	#    get-content is at least 4 times as SLOW -- do NOT use that
+	#    binaryreader is right there with readallbytes
+	#    streamreader is ???
 
-	####----> privision array and add stegged data into it
-	[byte[]] $stegdata = @()
+
+	write-host "MEASURING -- ENSTEGGED ARRAY CREATION"
+
+	####----> Make an array and then populate it with enstegged data
+	$stegdatalist = New-Object System.Collections.Generic.List[System.Byte]
 	$j = 0
 	while($j -le $stegarr.length-1){
 		####----> If the steg data bit is a 1, do AND op to ensure LSB is 1
 		if($stegarr[$j] -eq '1'){
-			$stegdata += $carrierbytes[$j] -bor 1
+			$stegdatalist.Add($carrierbytes[$j] -bor 1)
 		}
 		####----> Otherwise, use XOR to ensure LSB is 0
 		else{
-			$stegdata += $carrierbytes[$j] -band 254
+			$stegdatalist.Add($carrierbytes[$j] -band 254)
 		}
 		$j += 1
 	}
+	$stegdata = $stegdatalist.ToArray()
+
 
 	<#########################################################################
 	////////////////////----Write debugging information----///////////////////
@@ -281,12 +296,15 @@ if(!$desteg){
 	///////////////////----Begin actual steg operations, inserting bits into data----///////////////////
 	#>
 
+	write-host "MEASURING -- STREAMING DATA TO FILE"
+
 	# stream out the bytes array into the target file
 	$fileStream = [System.IO.File]::Open($OutFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
 	$writer = New-Object System.IO.BinaryWriter($fileStream)
 	$writer.BaseStream.Position = 54;
 	$writer.write($stegdata)
 	$writer.Close()
+
 }
 
 <#
@@ -296,6 +314,9 @@ if(!$desteg){
 #>
 ####----> if desteg switch is not set, desteg command from the stegged file
 else{
+	####----> Get bytes into an array from stegged image
+	$bytes = [System.IO.File]::ReadAllBytes($InFile)
+
 	####----> Start reading after end of BMP header
 	$f = 54
 	####----> Set end of loop to be after steg size (54 plus 31)
