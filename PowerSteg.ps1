@@ -337,6 +337,7 @@ if(!$desteg){
 
 	####----> read in the command to steg into our output file
 	foreach ($b in $stegbytes){
+		write-progress -Activity "Processing bytes for $StegFile" -CurrentOperation $b -PercentComplete (($stegarr.length / $stegbytes.length) * 100)
 		$b = [convert]::tostring($b, 2).padleft(8, "0")
 		$stegarr += $b
 	}
