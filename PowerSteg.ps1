@@ -1,4 +1,53 @@
 <#
+
+.SYNOPSIS
+Insert command information into BMP images for later execution
+    
+.DESCRIPTION
+This script works in two modes.  The first mode is used to embed information into image files.  Using this first mode, you can put powershell commands into an image file, for later execution.  You can use any type of image file, but just note that the extraction process will rely on a BMP file.    
+
+The second mode is the reverse process, where inserted information is extracted from a file.  Using the runcmd switch, you can immediately take the information and run it with PowerShell.  Alternatively, if you leave it in the default mode, PowerSteg will extract the information into a text file.
+
+.PARAMETER InFile
+This is the first parameter, which tells PowerSteg what image you wish to embed data into.
+
+.PARAMETER OutFile
+This is the second parameter, which tells PowerSteg where the resulting image file should be stored and what to name it.
+
+.PARAMETER StegFile
+This is the third parameter, which should be a simple text file, containing your desired steganographic information.
+
+.PARAMETER -desteg
+This switch triggers the desteg function
+
+.PARAMETER -runcmd
+This switch runs whatever steg data is extracted from the BMP file that you initially embedded information into.
+
+.EXAMPLE
+.\powersteg.ps1
+This is the default command, which can be used to insert command information into an image file.
+When you run powersteg with no switches or parameters, it will prompt you for the input file, the output file, and the steg data file.
+
+.EXAMPLE
+.\powersteg.ps1 test.jpg test.bmp cmd.txt
+This is the full command-line parameter way to utilize powersteg for inserting data into a file.  Note that I supplied a jpg image - PowerSteg can use input images that are not BMP, but it will convert them to BMP before inserting the command data.
+
+.EXAMPLE
+.\powersteg.ps1 -desteg
+This is the reverse function, which will strip command data out into a file for use separately (start-process for example)
+
+.EXAMPLE
+.\powersteg.ps1 -desteg -runcmd
+This switch was added to simplify the usage of powersteg, so you can easily extract and run steg commands without touching the disk.
+
+.EXAMPLE
+.\powersteg.ps1 blah.bmp -desteg -runcmd
+Reverse function, using all command line functionality.  This will assume blah.bmp contains inserted steg data, then extract it and run a new PowerShell process using that steg data.
+
+#>
+
+
+<#
 #############################################################################################################
 #############################################################################################################
 #############################################################################################################
@@ -28,31 +77,33 @@
                       |                                                         \
 				      |                                                           \
                       |--4 bytes, steg data size (in bytes)--|--4 bytes, extension--|
-
 	Example header info:::
 	Stegdata length (19)  // 32 bits, 4 bytes
 	00000000000000000000000000010011
-
 	Stegdata extension (txt)  //  28 bits, 4 ascii chars
 	111010011110001110100
-
 	Stegdata (testing new cmd.sh)
 	00000000000000000000000000010011000000011101001111000111010001110100011001010111001101110100011010010110111001100111001000000110111001100101011101110010000001100011011011010110010000101110011100110110100000001010
-
 	Full data for insertion:
 	0000000000000000000000000001001111101001111000111010000000000000000000000000000010011000000011101001111000111010001110100011001010111001101110100011010010110111001100111001000000110111001100101011101110010000001100011011011010110010000101110011100110110100000001010
-
 #############################################################################################################
 #############################################################################################################
 #############################################################################################################
 #>
 
 param (
-    [Parameter(Mandatory=$true)][string]$InFile,
+    [Parameter(Mandatory=$True)][string]$InFile,
     [Parameter(Mandatory=$false)][string]$OutFile,
     [Parameter(Mandatory=$false)][string]$StegFile,
-    [switch]$desteg = $false
+    [switch]$desteg = $false,
+    [switch]$runcmd = $false
 )
+
+
+####----> Load assemblies if necessary
+# Forms assembly for selecting image file as $InFile
+[Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
+
 
 #----> Start a timer to report how long execution takes
 $stopwatch = [system.diagnostics.stopwatch]::startNew()
@@ -62,8 +113,77 @@ $stopwatch = [system.diagnostics.stopwatch]::startNew()
 ###--- ADD FUNCTION HERE TO CHECK FOR FILETYPE AND CONVERT TO BMP IF NECESSARY ---###########################
 ###--- https://blogs.technet.microsoft.com/heyscriptingguy/2010/07/05/hey-scripting-guy-how-can-i-use-windows-powershell-to-convert-graphics-files-to-different-file-formats/ ---##
 ###--- https://hazzy.techanarchy.net/posh/powershell/bmp-to-jpg-the-powershell-way/ ---######################
+###*** Got it working, but conversion to and from BMP ruins steg data so it is only ***######################
+###*** feasible to convert the initial image from whatever to BMP and then extract from that ***######################
 #############################################################################################################
 #>
+
+####----> Check parameters and force setting them if null
+if(!$InFile){
+	####----> Check InFile to see if it's a BMP, and convert if it's not
+
+	### Get file from user dialog
+	### Limited filetypes - Images only
+	$FileBrowser = New-Object System.Windows.Forms.OpenFileDialog -Property @{ 
+	    InitialDirectory = [Environment]::GetFolderPath('MyPictures') 
+	    Filter = 'Images (*.jpg,*.jpeg,*.gif,*.png,*.tif,*.tiff,*.bmp)|*.jpg;*.jpeg,*.gif;*.png;*.tif;*.tiff;*.bmp'
+	}
+
+	$null = $FileBrowser.ShowDialog()
+	$InFile = $FileBrowser.FileName
+}
+else{
+	$linux = "/bin/"
+	if($linux){
+		$InFile = (pwd).path + '/' + $InFile
+	} else {
+		$InFile = (pwd).path + '\' + $InFile
+	}
+}
+if(!$desteg){
+	if(!$OutFile){
+		$OutFile = Read-Host -Prompt "Enter the desired output file name"
+	}
+	if(!$StegFile){
+		$StegFile = Read-Host -Prompt "Enter the steganographic command filename"
+	}
+}
+
+if(!$desteg){
+	write-host $InFile
+
+	# Set input filename for use later in converting back to original format
+	$originalfilename = $InFile
+
+	# Set a flag for whether or not we converted to BMP
+	$convertedfile = $False
+
+	### Check file type and set bmp extension
+	$ext = @()
+	4..1 | %{
+		$ext += $InFile[-$_]
+	}
+	$fileext = -join $ext
+	$fileext = $fileext.Trim('.')
+
+	if($fileext -like 'jpg' -or $fileext -like 'jpeg' -or $fileext -like 'gif' -or $fileext -like 'png' -or $fileext -like 'tif' -or $fileext -like 'tiff'){
+		$newfilename = $InFile -replace $fileext,'bmp'
+		$convertedfile = $True
+	}
+
+	else{
+		write-output "The selected filetype is invalid.  Please try running PowerSteg again, and select either a BMP, GIF, JPG, or PNG file."
+		break
+	}
+
+	if($convertedfile){
+		### Perform actual save function
+		$convertfile = new-object System.Drawing.Bitmap($InFile)
+		$convertfile.Save($newfilename, "bmp")	
+		$InFile = $newfilename
+	}	
+}
+
 
 ####----> Modifying script for Windows default PATH functionality
 $testpath = test-path "/bin/"
@@ -71,7 +191,6 @@ $testpath = test-path "/bin/"
 ####----> If there is no /bin/, it's Windows
 if($testpath -ne "True"){
 	$tmppath = (pwd).path
-	$InFile = $tmppath + '\' + $InFile
 	if($OutFile){
 		$StegFile = $tmppath + '\' + $StegFile
 		$OutFile = $tmppath + '\' + $OutFile
@@ -80,8 +199,7 @@ if($testpath -ne "True"){
 
 ####----> Otherwise it is Linux so you need / instead of \
 if($testpath -eq "True"){
-	$tmppath = (pwd).path
-	$InFile = $tmppath + '/' + $InFile
+	$tmppath = (pwd).PATH
 	if($OutFile){
 		$StegFile = $tmppath + '/' + $StegFile
 		$OutFile = $tmppath + '/' + $OutFile
@@ -118,6 +236,7 @@ if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
 	write-host " "
 }
 
+
 <#
 ////////////////////////////////////////////////////////////////
 ///////////////////----Enstegcmd function----///////////////////
@@ -126,7 +245,7 @@ if($PSCmdlet.MyInvocation.BoundParameters["Debug"].IsPresent){
 ####----> if no desteg flag is set, ensteg the file
 if(!$desteg){
 	####----> read bytes from input file
-	$bytes = (get-item $infile).length
+	$bytes = (get-item $InFile).length
 
 	####----> If the data to be added is larger than the target file, notify user and halt execution
 	$lengthcheck = (get-item $stegfile).length * 8
@@ -430,11 +549,11 @@ else{
 	$outdata = @()
 	$tmppath = (pwd).path
 
-	if($testpath -eq "False"){
+	if(!$testpath){
 		$newoutfile = $tmppath + '\stegoutput.' + $extout
 	}
 
-	if($testpath -eq "True"){
+	if($testpath){
 		$newoutfile = $tmppath + '/stegoutput.' + $extout
 	}
 
@@ -478,7 +597,20 @@ else{
 	$iter = 0
 	}
 
-	[io.file]::WriteAllBytes($newoutfile, $stegout)
+	if(!$runcmd){
+		write-host "Saving data to $newoutfile"
+		[io.file]::WriteAllBytes($newoutfile, $stegout)
+	}
+
+	if($runcmd){
+		$command = @()
+		$stegout | %{
+			$command += [char]$_
+		}
+		$cmd = -join $command
+		start-process powershell $cmd
+	}
+
 }
 
 $stopwatch.stop()
