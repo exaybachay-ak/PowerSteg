@@ -166,7 +166,7 @@ if(!$desteg){
 	$fileext = -join $ext
 	$fileext = $fileext.Trim('.')
 
-	if($fileext -like 'jpg' -or $fileext -like 'jpeg' -or $fileext -like 'gif' -or $fileext -like 'png' -or $fileext -like 'tif' -or $fileext -like 'tiff'){
+	if($fileext -like 'jpg' -or $fileext -like 'jpeg' -or $fileext -like 'bmp' -or $fileext -like 'gif' -or $fileext -like 'png' -or $fileext -like 'tif' -or $fileext -like 'tiff'){
 		$newfilename = $InFile -replace $fileext,'bmp'
 		$convertedfile = $True
 	}
